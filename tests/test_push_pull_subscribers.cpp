@@ -44,7 +44,7 @@ struct QueuingMdSub : IMarketDataSubscriber
   {
     BookUpdateDto d;
     d.symbol = ev.update.symbol;
-    d.tick = ev.seq;
+    d.tick = ev.tickSequence;
     if (!ev.update.bids.empty())
     {
       d.bestBid = ev.update.bids[0].price.toDouble();

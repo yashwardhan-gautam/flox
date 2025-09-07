@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env sh
 
 FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cpp|h)$')
 if [ -z "$FILES" ]; then

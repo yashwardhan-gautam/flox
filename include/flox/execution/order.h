@@ -10,7 +10,6 @@
 #pragma once
 
 #include "flox/common.h"
-#include "flox/util/base/time.h"
 
 #include <optional>
 
@@ -29,10 +28,9 @@ struct Order
   Quantity filledQuantity{0};
 
   TimePoint createdAt{};
-  std::optional<TimePoint> lastUpdated{};
-  std::optional<TimePoint> expiresAfter{};
-
-  std::optional<TimePoint> exchangeTimestamp{};
+  std::optional<TimePoint> exchangeTimestamp;
+  std::optional<TimePoint> lastUpdated;
+  std::optional<TimePoint> expiresAfter;
 };
 
 }  // namespace flox

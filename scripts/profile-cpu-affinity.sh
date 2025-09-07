@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Flox Engine - CPU Affinity Performance Profiling Script
 # Developed by FLOX Foundation (https://github.com/FLOX-Foundation)

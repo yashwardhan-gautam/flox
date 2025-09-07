@@ -96,7 +96,7 @@ class MockConnector
     event.trade.price = price;
     event.trade.quantity = qty;
     event.trade.isBuy = true;
-    event.trade.exchangeTsNs = nowNsMonotonic();
+    event.trade.timestamp = std::chrono::steady_clock::now();
 
     _tradeBus.publish(event);
   }

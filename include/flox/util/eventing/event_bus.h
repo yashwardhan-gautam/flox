@@ -111,6 +111,8 @@ class EventBus : public ISubsystem
   EventBus(const EventBus&) = delete;
   EventBus& operator=(const EventBus&) = delete;
 
+  /** Регистрация потребителя (ДО start()).
+    *  required=false ⇒ потребитель исключается из min-gating (не тормозит publish). */
   void subscribe(Listener* listener, bool required = true)
   {
     assert(listener && "Listener must not be null");

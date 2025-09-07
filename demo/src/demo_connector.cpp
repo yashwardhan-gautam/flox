@@ -9,7 +9,6 @@
 
 #include "demo/demo_connector.h"
 #include "demo/latency_collector.h"
-#include "flox/common.h"
 
 #include <chrono>
 #include <thread>
@@ -87,7 +86,7 @@ void DemoConnector::run()
     te.trade.price = price;
     te.trade.quantity = Quantity::fromDouble(qtyDist(_rng));
     te.trade.isBuy = sideDist(_rng);
-    te.trade.exchangeTsNs = nowNsMonotonic();
+    te.trade.timestamp = std::chrono::steady_clock::now();
     {
       FLOX_PROFILE_SCOPE("TradeBusPublish");
       MEASURE_LATENCY(LatencyCollector::BusPublish);

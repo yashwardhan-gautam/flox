@@ -6,7 +6,7 @@ BUILD_DIR=${1:-build}
 
 echo "[*] Looking for benchmarks in $BUILD_DIR"
 
-BENCHES=$(find "$BUILD_DIR" -maxdepth 1 -type f -executable -name '*benchmark*')
+BENCHES=$(find "$BUILD_DIR" -type f -executable -name '*benchmark*')
 
 if [[ -z "$BENCHES" ]]; then
   echo "[!] No benchmark executables found."

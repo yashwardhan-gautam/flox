@@ -11,9 +11,7 @@
 
 #include <memory_resource>
 #include <vector>
-
 #include "flox/common.h"
-#include "flox/util/base/time.h"
 
 namespace flox
 {
@@ -39,9 +37,7 @@ struct BookUpdate
   BookUpdateType type{};
   std::pmr::vector<BookLevel> bids;
   std::pmr::vector<BookLevel> asks;
-
-  UnixNanos exchangeTsNs{0};
-  UnixNanos systemTsNs{0};
+  TimePoint timestamp{};
 
   std::optional<Price> strike;
   std::optional<TimePoint> expiry;
