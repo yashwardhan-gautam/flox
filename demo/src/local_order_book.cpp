@@ -7,18 +7,16 @@
  * license information.
  */
 
-#include "demo/local_order_book.h"
-#include <iostream>
-#include <iomanip>
+#include "local_order_book.h"
+#include <json/json.h>
 #include <algorithm>
-#include <thread>
-#include <chrono>
+#include <sstream>
 
 namespace demo
 {
 
 LocalOrderBook::LocalOrderBook(const std::string& symbol)
-  : symbol_(symbol), last_update_id_(0), running_(false)
+    : symbol_(symbol), running_(false), context_(nullptr), wsi_(nullptr)
 {
 }
 
@@ -29,26 +27,33 @@ LocalOrderBook::~LocalOrderBook()
 
 bool LocalOrderBook::initialize()
 {
-  // Initialize WebSocket client  
-  if (!ws_client_.initialize())
+  // Define WebSocket protocol
+  static struct lws_protocols protocols[] = {
+      {
+          "binance",
+          LocalOrderBook::callback_binance,
+          0,
+          65536,
+      },
+      {nullptr, nullptr, 0, 0}};
+
+  // Initialize libwebsockets
+  struct lws_context_creation_info info;
+  memset(&info, 0, sizeof(info));
+
+  info.port = CONTEXT_PORT_NO_LISTEN;
+  info.protocols = protocols;
+  info.gid = -1;
+  info.uid = -1;
+  info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
+
+  context_ = lws_create_context(&info);
+  if (!context_)
   {
-    std::cerr << "Failed to initialize WebSocket client" << std::endl;
+    std::cerr << "Failed to create libwebsockets context" << std::endl;
     return false;
   }
-  
-  // Set up WebSocket callbacks
-  ws_client_.setDepthUpdateCallback([this](const DepthUpdate& update) {
-    onDepthUpdate(update);
-  });
-  
-  ws_client_.setConnectionCallback([this]() {
-    onWebSocketConnected();
-  });
-  
-  ws_client_.setErrorCallback([this](const std::string& error) {
-    onWebSocketError(error);
-  });
-  
+
   return true;
 }
 
@@ -58,160 +63,261 @@ void LocalOrderBook::start()
   {
     return;
   }
-  
+
   running_ = true;
-  
-  std::cout << "Starting local order book for " << symbol_ << " using partial depth stream" << std::endl;
-  
-  // Connect to WebSocket partial depth stream  
-  if (!ws_client_.connect(symbol_))
-  {
-    std::cerr << "Failed to connect to WebSocket stream" << std::endl;
-    running_ = false;
-    return;
-  }
-  
-  // Start WebSocket event loop in a separate thread
-  std::thread ws_thread([this]() {
-    ws_client_.run();
-  });
-  ws_thread.detach();
-  
-  std::cout << "Local order book started - will print updates as they arrive" << std::endl;
+  websocket_thread_ = std::thread(&LocalOrderBook::runWebSocket, this);
 }
 
 void LocalOrderBook::stop()
-{
-  running_ = false;
-  ws_client_.stop();
-}
-
-LocalOrderBook::OrderBookState LocalOrderBook::getOrderBookState() const
-{
-  std::lock_guard<std::mutex> lock(book_mutex_);
-  return {bids_, asks_, last_update_id_};
-}
-
-void LocalOrderBook::printTopLevels(int levels) const
-{
-  std::lock_guard<std::mutex> lock(book_mutex_);
-  
-  if (bids_.empty() && asks_.empty())
-  {
-    std::cout << "Order book is empty, waiting for updates..." << std::endl;
-    return;
-  }
-  
-  auto now = std::chrono::system_clock::now();
-  auto time_t = std::chrono::system_clock::to_time_t(now);
-  
-  std::cout << "\n=== Local Order Book - " << symbol_ << " (Partial Depth Stream) ===" << std::endl;
-  std::cout << "Timestamp: " << std::ctime(&time_t);
-  std::cout << "Last Update ID: " << last_update_id_ << std::endl;
-  
-  std::cout << "\nAsks (Sell Orders):" << std::endl;
-  std::cout << std::setw(15) << "Price" << std::setw(15) << "Quantity" << std::endl;
-  std::cout << std::setw(15) << "-----" << std::setw(15) << "--------" << std::endl;
-  
-  // Print asks in reverse order (highest price first)
-  auto ask_it = asks_.rbegin();
-  for (int i = 0; i < levels && ask_it != asks_.rend(); ++i, ++ask_it)
-  {
-    if (ask_it->second > 0)  // Only show non-zero quantities
-    {
-      std::cout << std::setw(15) << std::fixed << std::setprecision(2) << ask_it->first
-                << std::setw(15) << std::fixed << std::setprecision(3) << ask_it->second << std::endl;
-    }
-  }
-  
-  std::cout << "\n--- SPREAD ---" << std::endl;
-  
-  std::cout << "\nBids (Buy Orders):" << std::endl;
-  std::cout << std::setw(15) << "Price" << std::setw(15) << "Quantity" << std::endl;
-  std::cout << std::setw(15) << "-----" << std::setw(15) << "--------" << std::endl;
-  
-  // Print bids in descending order (highest price first)
-  auto bid_it = bids_.rbegin();
-  for (int i = 0; i < levels && bid_it != bids_.rend(); ++i, ++bid_it)
-  {
-    if (bid_it->second > 0)  // Only show non-zero quantities
-    {
-      std::cout << std::setw(15) << std::fixed << std::setprecision(2) << bid_it->first
-                << std::setw(15) << std::fixed << std::setprecision(3) << bid_it->second << std::endl;
-    }
-  }
-  
-  // Calculate spread
-  if (!bids_.empty() && !asks_.empty())
-  {
-    double bestBid = bids_.rbegin()->first;
-    double bestAsk = asks_.begin()->first;
-    double spread = bestAsk - bestBid;
-    double spreadBps = (spread / bestBid) * 10000;
-    
-    std::cout << "\nSpread: $" << std::fixed << std::setprecision(2) << spread 
-              << " (" << std::fixed << std::setprecision(2) << spreadBps << " bps)" << std::endl;
-  }
-  
-  std::cout << "==========================================" << std::endl;
-}
-
-void LocalOrderBook::onDepthUpdate(const DepthUpdate& update)
 {
   if (!running_)
   {
     return;
   }
-  
-  // With partial depth stream, each update contains the complete top 10 levels
-  // No need for complex synchronization - just process directly
-  processDepthUpdate(update);
-  
-  // Print the order book immediately after each update
-  printTopLevels(10);
-}
 
-void LocalOrderBook::onWebSocketConnected()
-{
-  std::cout << "WebSocket connected to partial depth stream - ready to receive updates!" << std::endl;
-}
+  running_ = false;
 
-void LocalOrderBook::onWebSocketError(const std::string& error)
-{
-  std::cerr << "WebSocket error: " << error << std::endl;
-}
-
-void LocalOrderBook::processDepthUpdate(const DepthUpdate& update)
-{
-  std::lock_guard<std::mutex> lock(book_mutex_);
-  
-  // Clear existing data - partial depth stream provides complete snapshot of top N levels
-  bids_.clear();
-  asks_.clear();
-  
-  // Load bid data (partial depth stream contains absolute quantities for top 10 levels)
-  for (const auto& bid : update.bids)
+  if (websocket_thread_.joinable())
   {
-    double price = std::stod(bid.first);
-    double quantity = std::stod(bid.second);
-    if (quantity > 0)  // Only add non-zero quantities
+    websocket_thread_.join();
+  }
+
+  if (context_)
+  {
+    lws_context_destroy(context_);
+    context_ = nullptr;
+  }
+}
+
+void LocalOrderBook::runWebSocket()
+{
+  // Create WebSocket connection info
+  struct lws_client_connect_info ccinfo;
+  memset(&ccinfo, 0, sizeof(ccinfo));
+
+  ccinfo.context = context_;
+  ccinfo.address = "fstream.binance.com";
+  ccinfo.port = 443;
+  ccinfo.path = "/ws/btcusdt@partialBookDepth20@100ms";
+  ccinfo.host = ccinfo.address;
+  ccinfo.origin = ccinfo.address;
+  ccinfo.protocol = "binance";
+  ccinfo.ssl_connection = LCCSCF_USE_SSL;
+  ccinfo.userdata = this;
+
+  // Connect to WebSocket
+  wsi_ = lws_client_connect_via_info(&ccinfo);
+  if (!wsi_)
+  {
+    std::cerr << "Failed to connect to Binance WebSocket" << std::endl;
+    return;
+  }
+
+  // Run the event loop
+  while (running_)
+  {
+    int ret = lws_service(context_, 50);  // 50ms timeout
+    if (ret < 0)
     {
+      std::cerr << "WebSocket service error: " << ret << std::endl;
+      break;
+    }
+  }
+}
+
+int LocalOrderBook::callback_binance(struct lws* wsi, enum lws_callback_reasons reason,
+                                     void* user, void* in, size_t len)
+{
+  LocalOrderBook* self = static_cast<LocalOrderBook*>(user);
+
+  switch (reason)
+  {
+    case LWS_CALLBACK_CLIENT_ESTABLISHED:
+      std::cout << "Connected to Binance WebSocket" << std::endl;
+      break;
+
+    case LWS_CALLBACK_CLIENT_RECEIVE:
+      if (self && in && len > 0)
+      {
+        std::string message(static_cast<char*>(in), len);
+        self->processPartialDepthUpdate(message);
+      }
+      break;
+
+    case LWS_CALLBACK_CLIENT_CLOSED:
+      std::cout << "WebSocket connection closed" << std::endl;
+      break;
+
+    case LWS_CALLBACK_CLIENT_CONNECTION_ERROR:
+      std::cerr << "WebSocket connection error" << std::endl;
+      break;
+
+    default:
+      break;
+  }
+
+  return 0;
+}
+
+void LocalOrderBook::processPartialDepthUpdate(const std::string& message)
+{
+  try
+  {
+    Json::Value root;
+    Json::Reader reader;
+
+    if (!reader.parse(message, root))
+    {
+      std::cerr << "Failed to parse JSON: " << reader.getFormattedErrorMessages() << std::endl;
+      return;
+    }
+
+    // Check if this is a partial depth update
+    if (!root.isMember("bids") || !root.isMember("asks"))
+    {
+      return;
+    }
+
+    // Parse bids
+    std::vector<std::vector<std::string>> bids;
+    const Json::Value& bidsJson = root["bids"];
+    for (const auto& bid : bidsJson)
+    {
+      if (bid.isArray() && bid.size() >= 2)
+      {
+        bids.push_back({bid[0].asString(), bid[1].asString()});
+      }
+    }
+
+    // Parse asks
+    std::vector<std::vector<std::string>> asks;
+    const Json::Value& asksJson = root["asks"];
+    for (const auto& ask : asksJson)
+    {
+      if (ask.isArray() && ask.size() >= 2)
+      {
+        asks.push_back({ask[0].asString(), ask[1].asString()});
+      }
+    }
+
+    // Update order book
+    updateOrderBook(bids, asks);
+
+    // Print updated order book
+    printOrderBook();
+  }
+  catch (const std::exception& e)
+  {
+    std::cerr << "Error processing partial depth update: " << e.what() << std::endl;
+  }
+}
+
+void LocalOrderBook::updateOrderBook(const std::vector<std::vector<std::string>>& bids,
+                                     const std::vector<std::vector<std::string>>& asks)
+{
+  std::lock_guard<std::mutex> lock(order_book_mutex_);
+
+  // Update bids
+  for (const auto& bid : bids)
+  {
+    double price = std::stod(bid[0]);
+    const std::string& quantity = bid[1];
+
+    if (std::stod(quantity) == 0.0)
+    {
+      // Remove level if quantity is 0
+      bids_.erase(price);
+    }
+    else
+    {
+      // Update level
       bids_[price] = quantity;
     }
   }
-  
-  // Load ask data  
-  for (const auto& ask : update.asks)
+
+  // Update asks
+  for (const auto& ask : asks)
   {
-    double price = std::stod(ask.first);
-    double quantity = std::stod(ask.second);
-    if (quantity > 0)  // Only add non-zero quantities
+    double price = std::stod(ask[0]);
+    const std::string& quantity = ask[1];
+
+    if (std::stod(quantity) == 0.0)
     {
+      // Remove level if quantity is 0
+      asks_.erase(price);
+    }
+    else
+    {
+      // Update level
       asks_[price] = quantity;
     }
   }
-  
-  last_update_id_ = update.finalUpdateId;
+}
+
+void LocalOrderBook::printOrderBook()
+{
+  std::lock_guard<std::mutex> lock(order_book_mutex_);
+
+  auto now = std::chrono::system_clock::now();
+  auto time_t = std::chrono::system_clock::to_time_t(now);
+
+  std::cout << "\n=== Binance Futures WebSocket Order Book Update ===" << std::endl;
+  std::cout << "Timestamp: " << std::ctime(&time_t);
+  std::cout << "Symbol: " << symbol_ << std::endl;
+
+  std::cout << "\nAsks (Sell Orders):" << std::endl;
+  std::cout << "Price\t\tQuantity" << std::endl;
+  std::cout << "-----\t\t--------" << std::endl;
+
+  // Print top 10 asks (lowest price first)
+  int ask_count = 0;
+  for (const auto& ask : asks_)
+  {
+    if (ask_count >= 10)
+    {
+      break;
+    }
+    std::cout << ask.first << "\t\t" << ask.second << std::endl;
+    ask_count++;
+  }
+
+  std::cout << "\n--- SPREAD ---" << std::endl;
+
+  std::cout << "\nBids (Buy Orders):" << std::endl;
+  std::cout << "Price\t\tQuantity" << std::endl;
+  std::cout << "-----\t\t--------" << std::endl;
+
+  // Print top 10 bids (highest price first)
+  int bid_count = 0;
+  for (const auto& bid : bids_)
+  {
+    if (bid_count >= 10)
+    {
+      break;
+    }
+    std::cout << bid.first << "\t\t" << bid.second << std::endl;
+    bid_count++;
+  }
+
+  // Calculate spread if we have both bids and asks
+  if (!bids_.empty() && !asks_.empty())
+  {
+    try
+    {
+      double bestBid = bids_.begin()->first;  // Highest bid
+      double bestAsk = asks_.begin()->first;  // Lowest ask
+      double spread = bestAsk - bestBid;
+      double spreadBps = (spread / bestBid) * 10000;  // basis points
+
+      std::cout << "\nSpread: $" << spread << " (" << spreadBps << " bps)" << std::endl;
+    }
+    catch (const std::exception& e)
+    {
+      std::cout << "\nCould not calculate spread: " << e.what() << std::endl;
+    }
+  }
+
+  std::cout << "===========================================" << std::endl;
 }
 
 }  // namespace demo

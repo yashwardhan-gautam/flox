@@ -10,25 +10,25 @@
 #pragma once
 
 #include <libwebsockets.h>
-#include <nlohmann/json.hpp>
+#include <atomic>
 #include <functional>
 #include <memory>
+#include <mutex>
+#include <nlohmann/json.hpp>
+#include <queue>
 #include <string>
 #include <thread>
-#include <atomic>
-#include <queue>
-#include <mutex>
 
 namespace demo
 {
 
 struct DepthUpdate
 {
-  int64_t eventTime;           // E
-  int64_t transactionTime;     // T  
-  int64_t firstUpdateId;       // U
-  int64_t finalUpdateId;       // u
-  int64_t prevFinalUpdateId;   // pu
+  int64_t eventTime;                                      // E
+  int64_t transactionTime;                                // T
+  int64_t firstUpdateId;                                  // U
+  int64_t finalUpdateId;                                  // u
+  int64_t prevFinalUpdateId;                              // pu
   std::vector<std::pair<std::string, std::string>> bids;  // [price, quantity]
   std::vector<std::pair<std::string, std::string>> asks;  // [price, quantity]
 };
@@ -76,20 +76,20 @@ class BinanceWebSocketClient
   std::atomic<bool> should_stop_;
   std::string stream_name_;
   std::string path_;  // Store the full WebSocket path
-  
+
   // Callbacks
   DepthUpdateCallback depth_callback_;
   ConnectionCallback connection_callback_;
   ErrorCallback error_callback_;
-  
+
   // Message buffer
   std::queue<std::string> message_queue_;
   std::mutex queue_mutex_;
-  
+
   // libwebsockets callback
   static int websocket_callback(struct lws* wsi, enum lws_callback_reasons reason,
-                               void* user, void* in, size_t len);
-  
+                                void* user, void* in, size_t len);
+
   // Message processing
   void processMessage(const std::string& message);
   void parseDepthUpdate(const nlohmann::json& json);

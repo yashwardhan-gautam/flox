@@ -9,14 +9,26 @@
 
 #pragma once
 
-#include "binance_websocket_client.h"
-#include <map>
-#include <string>
-#include <mutex>
+#include <libwebsockets.h>
 #include <atomic>
+#include <chrono>
+#include <iostream>
+#include <map>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
 
 namespace demo
 {
+
+struct OrderBookLevel
+{
+  std::string price;
+  std::string quantity;
+
+  OrderBookLevel(const std::string& p, const std::string& q) : price(p), quantity(q) {}
+};
 
 class LocalOrderBook
 {
@@ -30,48 +42,33 @@ class LocalOrderBook
   LocalOrderBook(LocalOrderBook&&) = delete;
   LocalOrderBook& operator=(LocalOrderBook&&) = delete;
 
-  // Initialize the order book 
   bool initialize();
-
-  // Start maintaining the order book
   void start();
-
-  // Stop the order book maintenance
   void stop();
-
-  // Get current order book state (thread-safe)
-  struct OrderBookState
-  {
-    std::map<double, double> bids;  // price -> quantity
-    std::map<double, double> asks;  // price -> quantity
-    int64_t lastUpdateId;
-  };
-  
-  OrderBookState getOrderBookState() const;
-
-  // Print top N levels immediately
-  void printTopLevels(int levels = 10) const;
+  void printOrderBook();
 
  private:
   std::string symbol_;
-  BinanceWebSocketClient ws_client_;
-  
-  // Order book data (protected by mutex)
-  mutable std::mutex book_mutex_;
-  std::map<double, double> bids_;  // price -> quantity
-  std::map<double, double> asks_;  // price -> quantity
-  int64_t last_update_id_;
-  
-  // Control flags
   std::atomic<bool> running_;
-  
-  // Callbacks
-  void onDepthUpdate(const DepthUpdate& update);
-  void onWebSocketConnected();
-  void onWebSocketError(const std::string& error);
-  
-  // Simple order book management using partial depth snapshots
-  void processDepthUpdate(const DepthUpdate& update);
+  std::thread websocket_thread_;
+
+  // Order book data
+  std::map<double, std::string, std::greater<double>> bids_;  // price -> quantity (descending)
+  std::map<double, std::string> asks_;                        // price -> quantity (ascending)
+  std::mutex order_book_mutex_;
+
+  // WebSocket context
+  struct lws_context* context_;
+  struct lws* wsi_;
+
+  // WebSocket callbacks
+  static int callback_binance(struct lws* wsi, enum lws_callback_reasons reason,
+                              void* user, void* in, size_t len);
+
+  void processPartialDepthUpdate(const std::string& message);
+  void updateOrderBook(const std::vector<std::vector<std::string>>& bids,
+                       const std::vector<std::vector<std::string>>& asks);
+  void runWebSocket();
 };
 
 }  // namespace demo
