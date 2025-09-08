@@ -18,28 +18,61 @@ add_executable(binance_futures_demo
     demo/src/binance_websocket_client.cpp
 )
 
-# Set include directories
+# Create the Gate.io futures demo executable
+add_executable(gateio_futures_demo
+    demo/src/gateio_futures_demo.cpp
+    demo/src/gateio_websocket_client.cpp
+)
+
+# Set include directories for Binance demo
 target_include_directories(binance_futures_demo PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/demo/include
 )
 
-# Link libraries
+# Set include directories for Gate.io demo
+target_include_directories(gateio_futures_demo PRIVATE 
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/demo/include
+)
+
+# Link libraries for Binance demo
 target_link_libraries(binance_futures_demo PRIVATE 
     ${LIBCURL_LIBRARIES}
     ${LIBWEBSOCKETS_LIBRARIES}
     ${JSONCPP_LIBRARIES}
 )
 
-# Set include directories
+# Link libraries for Gate.io demo
+target_link_libraries(gateio_futures_demo PRIVATE 
+    ${LIBCURL_LIBRARIES}
+    ${LIBWEBSOCKETS_LIBRARIES}
+    ${JSONCPP_LIBRARIES}
+)
+
+# Set library include directories for Binance demo
 target_include_directories(binance_futures_demo PRIVATE 
     ${LIBCURL_INCLUDE_DIRS}
     ${LIBWEBSOCKETS_INCLUDE_DIRS}
     ${JSONCPP_INCLUDE_DIRS}
 )
 
-# Set compile options
+# Set library include directories for Gate.io demo
+target_include_directories(gateio_futures_demo PRIVATE 
+    ${LIBCURL_INCLUDE_DIRS}
+    ${LIBWEBSOCKETS_INCLUDE_DIRS}
+    ${JSONCPP_INCLUDE_DIRS}
+)
+
+# Set compile options for Binance demo
 target_compile_options(binance_futures_demo PRIVATE 
+    ${LIBCURL_CFLAGS_OTHER}
+    ${LIBWEBSOCKETS_CFLAGS_OTHER}
+    ${JSONCPP_CFLAGS_OTHER}
+)
+
+# Set compile options for Gate.io demo
+target_compile_options(gateio_futures_demo PRIVATE 
     ${LIBCURL_CFLAGS_OTHER}
     ${LIBWEBSOCKETS_CFLAGS_OTHER}
     ${JSONCPP_CFLAGS_OTHER}
