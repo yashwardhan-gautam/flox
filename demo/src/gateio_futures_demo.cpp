@@ -33,7 +33,7 @@ void signalHandler(int signal)
   keep_running = false;
 }
 
-void printOrderBook(const std::string& contract)
+void printOrderBook(const std::string& contract, long external_latency_ms, long internal_latency_us)
 {
   auto now = std::chrono::system_clock::now();
   auto time_t = std::chrono::system_clock::to_time_t(now);
@@ -41,6 +41,9 @@ void printOrderBook(const std::string& contract)
   std::cout << "\n=== Gate.io Futures WebSocket Order Book Update ===" << std::endl;
   std::cout << "Timestamp: " << std::ctime(&time_t);
   std::cout << "Contract: " << contract << std::endl;
+  std::cout << "Local Order Book State - Bids: " << bids_.size() << ", Asks: " << asks_.size() << std::endl;
+  std::cout << "External Latency: " << external_latency_ms << "ms (WebSocket receive - Exchange timestamp)" << std::endl;
+  std::cout << "Internal Latency: " << internal_latency_us << "μs (Order book update - WebSocket receive)" << std::endl;
 
   std::cout << "\nAsks (Sell Orders):" << std::endl;
   std::cout << "Price\t\tSize (USD)" << std::endl;
@@ -48,6 +51,7 @@ void printOrderBook(const std::string& contract)
 
   // Print top 5 asks (lowest price first)
   int ask_count = 0;
+  // std::cout << "[DEBUG] Printing asks from local map (size: " << asks_.size() << ")" << std::endl;
   for (const auto& ask : asks_)
   {
     if (ask_count >= 5)
@@ -72,6 +76,7 @@ void printOrderBook(const std::string& contract)
 
   // Print top 5 bids (highest price first)
   int bid_count = 0;
+  // std::cout << "[DEBUG] Printing bids from local map (size: " << bids_.size() << ")" << std::endl;
   for (const auto& bid : bids_)
   {
     if (bid_count >= 5)
@@ -111,6 +116,21 @@ void printOrderBook(const std::string& contract)
 
 void onOrderBookUpdate(const GateOrderBookUpdate& update)
 {
+  // Gate.io WebSocket Update Format:
+  // - Channel: futures.order_book (5-level order book, real-time)
+  // - Type: SNAPSHOT updates (full order book) - each message contains complete 5-level order book
+  // - Format: {"bids":[{"p":"price","s":size},...], "asks":[{"p":"price","s":size},...]}
+  // - Example: {"bids":[{"p":"113588.8","s":13887}], "asks":[{"p":"113588.9","s":21229}]}
+  // - Frequency: Real-time updates whenever order book changes (0ms interval)
+  // - Processing: Clear existing maps, then rebuild with new snapshot data
+  // - Contract Size: Raw size values need to be multiplied by quanto_multiplier for USD value
+
+  // Calculate external latency (WebSocket receive time - Exchange timestamp)
+  auto external_latency_ms = update.websocket_receive_timestamp - update.timestamp;
+
+  // std::cout << "\n[DEBUG] Processing Gate.io order book update - Bids: " << update.bids.size() << ", Asks: " << update.asks.size() << std::endl;
+  // std::cout << "[DEBUG] Contract: " << update.contract << ", Timestamp: " << update.timestamp << ", ID: " << update.id << std::endl;
+
   // Clear existing order book (Gate.io sends full snapshots)
   bids_.clear();
   asks_.clear();
@@ -120,6 +140,7 @@ void onOrderBookUpdate(const GateOrderBookUpdate& update)
   {
     double price = std::stod(bid.first);
     const std::string& quantity = bid.second;
+    // std::cout << "[DEBUG] Bid: " << bid.first << " @ " << quantity << std::endl;
 
     if (std::stod(quantity) > 0.0)
     {
@@ -132,6 +153,7 @@ void onOrderBookUpdate(const GateOrderBookUpdate& update)
   {
     double price = std::stod(ask.first);
     const std::string& quantity = ask.second;
+    // std::cout << "[DEBUG] Ask: " << ask.first << " @ " << quantity << std::endl;
 
     if (std::stod(quantity) > 0.0)
     {
@@ -139,8 +161,17 @@ void onOrderBookUpdate(const GateOrderBookUpdate& update)
     }
   }
 
-  // Print updated order book
-  printOrderBook(update.contract);
+  // Calculate internal latency (Order book update complete time - WebSocket receive time)
+  auto orderbook_update_complete_time = std::chrono::duration_cast<std::chrono::microseconds>(
+                                            std::chrono::system_clock::now().time_since_epoch())
+                                            .count();
+  auto websocket_receive_time_us = update.websocket_receive_timestamp * 1000;  // Convert ms to microseconds
+  auto internal_latency_us = orderbook_update_complete_time - websocket_receive_time_us;
+
+  // std::cout << "[DEBUG] Local order book after update - Bids: " << bids_.size() << ", Asks: " << asks_.size() << std::endl;
+
+  // Print updated order book with latency information
+  printOrderBook(update.contract, external_latency_ms, internal_latency_us);
 }
 
 void onConnection()

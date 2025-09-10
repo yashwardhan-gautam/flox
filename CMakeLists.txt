@@ -7,7 +7,18 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Find required packages
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(LIBCURL REQUIRED libcurl)
+
+# Try to find CURL using FindCURL first, fallback to pkg-config
+find_package(CURL QUIET)
+if(NOT CURL_FOUND)
+    pkg_check_modules(LIBCURL REQUIRED libcurl)
+    set(CURL_LIBRARIES ${LIBCURL_LIBRARIES})
+    set(CURL_INCLUDE_DIRS ${LIBCURL_INCLUDE_DIRS})
+    set(CURL_CFLAGS_OTHER ${LIBCURL_CFLAGS_OTHER})
+else()
+    set(CURL_CFLAGS_OTHER "")
+endif()
+
 pkg_check_modules(LIBWEBSOCKETS REQUIRED libwebsockets)
 pkg_check_modules(JSONCPP REQUIRED jsoncpp)
 # nlohmann_json doesn't have pkg-config, just include it directly
@@ -38,42 +49,42 @@ target_include_directories(gateio_futures_demo PRIVATE
 
 # Link libraries for Binance demo
 target_link_libraries(binance_futures_demo PRIVATE 
-    ${LIBCURL_LIBRARIES}
+    ${CURL_LIBRARIES}
     ${LIBWEBSOCKETS_LIBRARIES}
     ${JSONCPP_LIBRARIES}
 )
 
 # Link libraries for Gate.io demo
 target_link_libraries(gateio_futures_demo PRIVATE 
-    ${LIBCURL_LIBRARIES}
+    ${CURL_LIBRARIES}
     ${LIBWEBSOCKETS_LIBRARIES}
     ${JSONCPP_LIBRARIES}
 )
 
 # Set library include directories for Binance demo
 target_include_directories(binance_futures_demo PRIVATE 
-    ${LIBCURL_INCLUDE_DIRS}
+    ${CURL_INCLUDE_DIRS}
     ${LIBWEBSOCKETS_INCLUDE_DIRS}
     ${JSONCPP_INCLUDE_DIRS}
 )
 
 # Set library include directories for Gate.io demo
 target_include_directories(gateio_futures_demo PRIVATE 
-    ${LIBCURL_INCLUDE_DIRS}
+    ${CURL_INCLUDE_DIRS}
     ${LIBWEBSOCKETS_INCLUDE_DIRS}
     ${JSONCPP_INCLUDE_DIRS}
 )
 
 # Set compile options for Binance demo
 target_compile_options(binance_futures_demo PRIVATE 
-    ${LIBCURL_CFLAGS_OTHER}
+    ${CURL_CFLAGS_OTHER}
     ${LIBWEBSOCKETS_CFLAGS_OTHER}
     ${JSONCPP_CFLAGS_OTHER}
 )
 
 # Set compile options for Gate.io demo
 target_compile_options(gateio_futures_demo PRIVATE 
-    ${LIBCURL_CFLAGS_OTHER}
+    ${CURL_CFLAGS_OTHER}
     ${LIBWEBSOCKETS_CFLAGS_OTHER}
     ${JSONCPP_CFLAGS_OTHER}
 )

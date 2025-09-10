@@ -24,11 +24,12 @@ namespace demo
 
 struct GateOrderBookUpdate
 {
-  int64_t timestamp;                                      // t
+  int64_t timestamp;                                      // t (exchange timestamp)
   std::string contract;                                   // s (contract symbol)
   int64_t id;                                             // id
   std::vector<std::pair<std::string, std::string>> bids;  // [price, quantity]
   std::vector<std::pair<std::string, std::string>> asks;  // [price, quantity]
+  int64_t websocket_receive_timestamp;                    // timestamp when WebSocket message was received
 };
 
 struct ContractInfo

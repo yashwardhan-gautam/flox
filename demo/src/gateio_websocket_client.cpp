@@ -382,13 +382,21 @@ int GateIOWebSocketClient::websocket_callback(struct lws* wsi, enum lws_callback
 
 void GateIOWebSocketClient::processMessage(const std::string& message)
 {
+  // Gate.io WebSocket Message Format:
+  // - Connection: wss://fx-ws.gateio.ws/v4/ws/usdt (USDT futures endpoint)
+  // - Subscription: {"channel":"futures.order_book","event":"subscribe","payload":["BTC_USDT","5","0"]}
+  // - Response Format: {"channel":"futures.order_book","event":"all","result":{...},"time":timestamp}
+  // - Order Book Data: {"bids":[{"p":"price","s":size}],"asks":[{"p":"price","s":size}]}
+  // - Update Type: Full snapshots (complete 5-level order book each time)
+  // - Frequency: Real-time (0ms interval) whenever order book changes
+
   // Log the raw JSON message immediately upon arrival
-  std::cout << "\n=== Gate.io WebSocket Message Received ===" << std::endl;
-  std::cout << "Timestamp: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()
-            << std::endl;
-  std::cout << "Message length: " << message.length() << " bytes" << std::endl;
-  std::cout << "JSON: " << message << std::endl;
-  std::cout << "=========================================" << std::endl;
+  // std::cout << "\n=== Gate.io WebSocket Message Received ===" << std::endl;
+  // std::cout << "Timestamp: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()
+  //           << std::endl;
+  // std::cout << "Message length: " << message.length() << " bytes" << std::endl;
+  // std::cout << "JSON: " << message << std::endl;
+  // std::cout << "=========================================" << std::endl;
 
   try
   {
@@ -441,24 +449,32 @@ void GateIOWebSocketClient::parseOrderBookUpdate(const nlohmann::json& json)
     update.timestamp = json["t"];
     update.contract = json["contract"];
     update.id = json["id"];
+    update.websocket_receive_timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                             std::chrono::system_clock::now().time_since_epoch())
+                                             .count();
 
-    // Debug info (commented out for cleaner output)
-    // std::cout << "🔍 Parsing order book update:" << std::endl;
-    // std::cout << "   Timestamp: " << update.timestamp << std::endl;
-    // std::cout << "   Contract: " << update.contract << std::endl;
-    // std::cout << "   ID: " << update.id << std::endl;
+    // Debug: Log timestamp comparison for troubleshooting
+    // std::cout << "[DEBUG] Exchange timestamp: " << update.timestamp << std::endl;
+    // std::cout << "[DEBUG] WebSocket receive timestamp: " << update.websocket_receive_timestamp << std::endl;
+    // std::cout << "[DEBUG] Difference: " << (update.websocket_receive_timestamp - update.timestamp) << "ms" << std::endl;
+
+    // Debug info for parsing
+    // std::cout << "\n[DEBUG] 🔍 Parsing Gate.io order book update:" << std::endl;
+    // std::cout << "[DEBUG]    Timestamp: " << update.timestamp << std::endl;
+    // std::cout << "[DEBUG]    Contract: " << update.contract << std::endl;
+    // std::cout << "[DEBUG]    ID: " << update.id << std::endl;
 
     // Parse bids - Gate.io format: [{"p":"price","s":size}, ...]
     if (json.contains("bids"))
     {
-      // std::cout << "   Parsing " << json["bids"].size() << " bids:" << std::endl;
+      // std::cout << "[DEBUG]    Parsing " << json["bids"].size() << " bids:" << std::endl;
       for (const auto& bid : json["bids"])
       {
         if (bid.contains("p") && bid.contains("s"))
         {
           std::string price = bid["p"].get<std::string>();
           std::string quantity = bid["s"].is_string() ? bid["s"].get<std::string>() : std::to_string(bid["s"].get<int>());
-          // std::cout << "     Bid: " << price << " @ " << quantity << std::endl;
+          // std::cout << "[DEBUG]      Raw Bid: " << price << " @ " << quantity << std::endl;
           update.bids.emplace_back(price, quantity);
         }
       }
@@ -467,14 +483,14 @@ void GateIOWebSocketClient::parseOrderBookUpdate(const nlohmann::json& json)
     // Parse asks - Gate.io format: [{"p":"price","s":size}, ...]
     if (json.contains("asks"))
     {
-      // std::cout << "   Parsing " << json["asks"].size() << " asks:" << std::endl;
+      // std::cout << "[DEBUG]    Parsing " << json["asks"].size() << " asks:" << std::endl;
       for (const auto& ask : json["asks"])
       {
         if (ask.contains("p") && ask.contains("s"))
         {
           std::string price = ask["p"].get<std::string>();
           std::string quantity = ask["s"].is_string() ? ask["s"].get<std::string>() : std::to_string(ask["s"].get<int>());
-          // std::cout << "     Ask: " << price << " @ " << quantity << std::endl;
+          // std::cout << "[DEBUG]      Raw Ask: " << price << " @ " << quantity << std::endl;
           update.asks.emplace_back(price, quantity);
         }
       }

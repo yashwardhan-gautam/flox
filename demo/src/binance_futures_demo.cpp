@@ -10,8 +10,10 @@
 #include <atomic>
 #include <chrono>
 #include <csignal>
+#include <iomanip>
 #include <iostream>
 #include <map>
+#include <mutex>
 #include <thread>
 #include "demo/binance_websocket_client.h"
 
@@ -22,6 +24,7 @@ std::atomic<bool> keep_running(true);
 // Local order book to maintain state
 std::map<double, std::string, std::greater<double>> bids_;  // price -> quantity (descending)
 std::map<double, std::string> asks_;                        // price -> quantity (ascending)
+std::mutex order_book_mutex_;                               // Protect order book access
 
 void signalHandler(int signal)
 {
@@ -29,14 +32,27 @@ void signalHandler(int signal)
   keep_running = false;
 }
 
-void printOrderBook()
+void printOrderBook(long external_latency_ms, long internal_latency_us)
 {
   auto now = std::chrono::system_clock::now();
   auto time_t = std::chrono::system_clock::to_time_t(now);
 
+  // Create local copies of the order book maps for thread-safe printing
+  std::map<double, std::string, std::greater<double>> local_bids;
+  std::map<double, std::string> local_asks;
+
+  {
+    std::lock_guard<std::mutex> lock(order_book_mutex_);
+    local_bids = bids_;
+    local_asks = asks_;
+  }
+
   std::cout << "\n=== Binance Futures WebSocket Order Book Update ===" << std::endl;
   std::cout << "Timestamp: " << std::ctime(&time_t);
   std::cout << "Symbol: BTCUSDT" << std::endl;
+  std::cout << "Local Order Book State - Bids: " << local_bids.size() << ", Asks: " << local_asks.size() << std::endl;
+  std::cout << "External Latency: " << external_latency_ms << "ms (WebSocket receive - Exchange timestamp)" << std::endl;
+  std::cout << "Internal Latency: " << internal_latency_us << "μs (Order book update - WebSocket receive)" << std::endl;
 
   std::cout << "\nAsks (Sell Orders):" << std::endl;
   std::cout << "Price\t\tQuantity" << std::endl;
@@ -44,13 +60,13 @@ void printOrderBook()
 
   // Print top 5 asks (lowest price first)
   int ask_count = 0;
-  for (const auto& ask : asks_)
+  for (const auto& ask : local_asks)
   {
     if (ask_count >= 5)
     {
       break;
     }
-    std::cout << ask.first << "\t\t" << ask.second << std::endl;
+    std::cout << std::fixed << std::setprecision(1) << ask.first << "\t\t" << std::setprecision(4) << std::stod(ask.second) << std::endl;
     ask_count++;
   }
 
@@ -62,27 +78,27 @@ void printOrderBook()
 
   // Print top 5 bids (highest price first)
   int bid_count = 0;
-  for (const auto& bid : bids_)
+  for (const auto& bid : local_bids)
   {
     if (bid_count >= 5)
     {
       break;
     }
-    std::cout << bid.first << "\t\t" << bid.second << std::endl;
+    std::cout << std::fixed << std::setprecision(1) << bid.first << "\t\t" << std::setprecision(4) << std::stod(bid.second) << std::endl;
     bid_count++;
   }
 
   // Calculate spread if we have both bids and asks
-  if (!bids_.empty() && !asks_.empty())
+  if (!local_bids.empty() && !local_asks.empty())
   {
     try
     {
-      double bestBid = bids_.begin()->first;  // Highest bid
-      double bestAsk = asks_.begin()->first;  // Lowest ask
+      double bestBid = local_bids.begin()->first;  // Highest bid
+      double bestAsk = local_asks.begin()->first;  // Lowest ask
       double spread = bestAsk - bestBid;
       double spreadBps = (spread / bestBid) * 10000;  // basis points
 
-      std::cout << "\nSpread: $" << spread << " (" << spreadBps << " bps)" << std::endl;
+      std::cout << "\nSpread: $" << std::fixed << std::setprecision(1) << spread << " (" << std::setprecision(2) << spreadBps << " bps)" << std::endl;
     }
     catch (const std::exception& e)
     {
@@ -95,44 +111,67 @@ void printOrderBook()
 
 void onDepthUpdate(const DepthUpdate& update)
 {
-  // Update bids
-  for (const auto& bid : update.bids)
-  {
-    double price = std::stod(bid.first);
-    const std::string& quantity = bid.second;
+  // Binance WebSocket Update Format:
+  // - Stream: btcusdt@depth5@0ms (partial book depth, 5 levels, real-time)
+  // - Type: SNAPSHOT updates (not incremental) - each message contains complete 5-level order book
+  // - Format: {"b":[["price","qty"],...], "a":[["price","qty"],...]}
+  // - Example: {"b":[["113622.60","14.642"],["113622.50","0.276"]], "a":[["113622.70","0.660"]]}
+  // - Frequency: Real-time updates whenever top 5 levels change
+  // - Processing: Clear existing maps, then rebuild with new snapshot data
 
-    if (std::stod(quantity) == 0.0)
+  // Calculate external latency (WebSocket receive time - Exchange timestamp)
+  auto external_latency_ms = update.websocket_receive_timestamp - update.eventTime;
+
+  // std::cout << "\n[DEBUG] Processing depth update - Bids: " << update.bids.size() << ", Asks: " << update.asks.size() << std::endl;
+
+  {
+    std::lock_guard<std::mutex> lock(order_book_mutex_);
+
+    // Clear existing order book (Binance sends snapshots, not incremental updates)
+    // std::cout << "[DEBUG] Clearing existing order book - Previous Bids: " << bids_.size() << ", Asks: " << asks_.size() << std::endl;
+    bids_.clear();
+    asks_.clear();
+
+    // Update bids
+    for (const auto& bid : update.bids)
     {
-      // Remove level if quantity is 0
-      bids_.erase(price);
+      double price = std::stod(bid.first);
+      const std::string& quantity = bid.second;
+      // std::cout << "[DEBUG] Bid: " << bid.first << " @ " << quantity << std::endl;
+
+      if (std::stod(quantity) > 0.0)
+      {
+        // Add level (no need to check for 0 since we cleared the maps)
+        bids_[price] = quantity;
+      }
     }
-    else
+
+    // Update asks
+    for (const auto& ask : update.asks)
     {
-      // Update level
-      bids_[price] = quantity;
+      double price = std::stod(ask.first);
+      const std::string& quantity = ask.second;
+      // std::cout << "[DEBUG] Ask: " << ask.first << " @ " << quantity << std::endl;
+
+      if (std::stod(quantity) > 0.0)
+      {
+        // Add level (no need to check for 0 since we cleared the maps)
+        asks_[price] = quantity;
+      }
     }
+
+    // std::cout << "[DEBUG] Order book after update - Bids: " << bids_.size() << ", Asks: " << asks_.size() << std::endl;
   }
 
-  // Update asks
-  for (const auto& ask : update.asks)
-  {
-    double price = std::stod(ask.first);
-    const std::string& quantity = ask.second;
+  // Calculate internal latency (Order book update complete time - WebSocket receive time)
+  auto orderbook_update_complete_time = std::chrono::duration_cast<std::chrono::microseconds>(
+                                            std::chrono::system_clock::now().time_since_epoch())
+                                            .count();
+  auto websocket_receive_time_us = update.websocket_receive_timestamp * 1000;  // Convert ms to microseconds
+  auto internal_latency_us = orderbook_update_complete_time - websocket_receive_time_us;
 
-    if (std::stod(quantity) == 0.0)
-    {
-      // Remove level if quantity is 0
-      asks_.erase(price);
-    }
-    else
-    {
-      // Update level
-      asks_[price] = quantity;
-    }
-  }
-
-  // Print updated order book
-  printOrderBook();
+  // Print updated order book with latency information
+  printOrderBook(external_latency_ms, internal_latency_us);
 }
 
 void onConnection()
@@ -151,6 +190,10 @@ int main()
   // Set up signal handler for graceful shutdown
   std::signal(SIGINT, signalHandler);
   std::signal(SIGTERM, signalHandler);
+
+  // Clear any stale order book data from previous runs
+  bids_.clear();
+  asks_.clear();
 
   std::cout << "🚀 Binance Futures WebSocket Depth Stream Demo" << std::endl;
   std::cout << "Connecting to BTCUSDT depth stream..." << std::endl;

@@ -24,13 +24,14 @@ namespace demo
 
 struct DepthUpdate
 {
-  int64_t eventTime;                                      // E
+  int64_t eventTime;                                      // E (exchange timestamp)
   int64_t transactionTime;                                // T
   int64_t firstUpdateId;                                  // U
   int64_t finalUpdateId;                                  // u
   int64_t prevFinalUpdateId;                              // pu
   std::vector<std::pair<std::string, std::string>> bids;  // [price, quantity]
   std::vector<std::pair<std::string, std::string>> asks;  // [price, quantity]
+  int64_t websocket_receive_timestamp;                    // timestamp when WebSocket message was received
 };
 
 class BinanceWebSocketClient

@@ -14,7 +14,8 @@ pkgs.mkShell {
     # Network libraries
     openssl
     zlib
-    curl
+    curl.dev  # Include development headers
+    curl      # Runtime library
     libwebsockets
     
     # JSON parsing

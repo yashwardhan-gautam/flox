@@ -245,6 +245,9 @@ void BinanceWebSocketClient::parseDepthUpdate(const nlohmann::json& json)
     update.firstUpdateId = json["U"];
     update.finalUpdateId = json["u"];
     update.prevFinalUpdateId = json["pu"];
+    update.websocket_receive_timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                             std::chrono::system_clock::now().time_since_epoch())
+                                             .count();
 
     // Parse bids
     for (const auto& bid : json["b"])
