@@ -76,16 +76,16 @@ bool GateIOWebSocketClient::connect(const std::string& contract)
   contract_ = contract;
 
   // Fetch contract info first before establishing WebSocket connection
-  std::cout << "📡 Fetching contract information for " << contract << " from Gate.io API..." << std::endl;
+  std::cout << "Fetching contract information for " << contract << " from Gate.io API..." << std::endl;
   if (!fetchContractInfo(contract))
   {
     std::cerr << "Failed to fetch contract info for " << contract << std::endl;
     return false;
   }
 
-  std::cout << "✅ Contract info fetched successfully! Proceeding with WebSocket connection..." << std::endl;
+  std::cout << "Contract info fetched successfully! Proceeding with WebSocket connection..." << std::endl;
 
-  std::cout << "📋 Contract Info Summary:" << std::endl;
+  std::cout << "Contract Info Summary:" << std::endl;
   std::cout << "   Name: " << contract_info_.name << std::endl;
   std::cout << "   Quanto Multiplier: " << contract_info_.quanto_multiplier << std::endl;
   std::cout << "   Type: " << contract_info_.type << std::endl;
@@ -405,7 +405,7 @@ void GateIOWebSocketClient::processMessage(const std::string& message)
     // Check for subscription error
     if (json.contains("error") && !json["error"].is_null())
     {
-      std::cerr << "❌ Gate.io subscription error: " << json["error"] << std::endl;
+      std::cerr << "Gate.io subscription error: " << json["error"] << std::endl;
       return;
     }
 
@@ -414,14 +414,14 @@ void GateIOWebSocketClient::processMessage(const std::string& message)
         json.contains("result") && json["result"].contains("status") &&
         json["result"]["status"] == "success")
     {
-      std::cout << "✅ Successfully subscribed to Gate.io order book updates!" << std::endl;
+      std::cout << "Successfully subscribed to Gate.io order book updates!" << std::endl;
       return;
     }
 
     // Check for ping/pong response
     if (json.contains("channel") && (json["channel"] == "futures.ping" || json["channel"] == "futures.pong"))
     {
-      std::cout << "📡 Received pong response from Gate.io" << std::endl;
+      std::cout << "Received pong response from Gate.io" << std::endl;
       return;
     }
 
@@ -459,7 +459,7 @@ void GateIOWebSocketClient::parseOrderBookUpdate(const nlohmann::json& json)
     // std::cout << "[DEBUG] Difference: " << (update.websocket_receive_timestamp - update.timestamp) << "ms" << std::endl;
 
     // Debug info for parsing
-    // std::cout << "\n[DEBUG] 🔍 Parsing Gate.io order book update:" << std::endl;
+    // std::cout << "\n[DEBUG] Parsing Gate.io order book update:" << std::endl;
     // std::cout << "[DEBUG]    Timestamp: " << update.timestamp << std::endl;
     // std::cout << "[DEBUG]    Contract: " << update.contract << std::endl;
     // std::cout << "[DEBUG]    ID: " << update.id << std::endl;

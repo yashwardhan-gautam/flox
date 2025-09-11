@@ -49,23 +49,18 @@ void printOrderBook(const std::string& contract, long external_latency_ms, long 
   std::cout << "Price\t\tSize (USD)" << std::endl;
   std::cout << "-----\t\t---------" << std::endl;
 
-  // Print top 5 asks (lowest price first)
+  // Print top 5 asks (highest price first - reverse order)
   int ask_count = 0;
   // std::cout << "[DEBUG] Printing asks from local map (size: " << asks_.size() << ")" << std::endl;
-  for (const auto& ask : asks_)
+  for (auto ask_it = asks_.rbegin(); ask_it != asks_.rend() && ask_count < 5; ++ask_it, ++ask_count)
   {
-    if (ask_count >= 5)
-    {
-      break;
-    }
     // Calculate actual contract size using quanto multiplier
-    double actual_size = std::stod(ask.second);
+    double actual_size = std::stod(ask_it->second);
     if (global_client)
     {
       actual_size *= global_client->getQuantoMultiplier();
     }
-    std::cout << std::fixed << std::setprecision(1) << ask.first << "\t\t" << std::setprecision(4) << actual_size << std::endl;
-    ask_count++;
+    std::cout << std::fixed << std::setprecision(1) << ask_it->first << "\t\t" << std::setprecision(4) << actual_size << std::endl;
   }
 
   std::cout << "\n--- SPREAD ---" << std::endl;
@@ -176,13 +171,13 @@ void onOrderBookUpdate(const GateOrderBookUpdate& update)
 
 void onConnection()
 {
-  std::cout << "✅ Connected to Gate.io Futures WebSocket!" << std::endl;
+  std::cout << "Connected to Gate.io Futures WebSocket!" << std::endl;
   std::cout << "Subscribing to BTC_USDT order book (5 levels)..." << std::endl;
 }
 
 void onError(const std::string& error)
 {
-  std::cerr << "❌ Gate.io WebSocket error: " << error << std::endl;
+  std::cerr << "Gate.io WebSocket error: " << error << std::endl;
 }
 
 int main()
@@ -191,7 +186,7 @@ int main()
   std::signal(SIGINT, signalHandler);
   std::signal(SIGTERM, signalHandler);
 
-  std::cout << "🚀 Gate.io Futures WebSocket Order Book Demo" << std::endl;
+  std::cout << "Gate.io Futures WebSocket Order Book Demo" << std::endl;
   std::cout << "Connecting to BTC_USDT order book stream..." << std::endl;
   std::cout << "Will log and display 5-level order book on every update" << std::endl;
   std::cout << "Press Ctrl+C to exit" << std::endl;

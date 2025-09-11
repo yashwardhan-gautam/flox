@@ -48,7 +48,7 @@ pkgs.mkShell {
   NIX_ENFORCE_NO_NATIVE = "0";  # Allow -march=native for local development
 
   shellHook = ''
-    echo "🚀 FLOX Futures WebSocket Demo Environment"
+    echo "FLOX Futures WebSocket Demo Environment"
     echo "==========================================="
     echo "CMake:       $(cmake --version | head -n1)"
     echo "GCC:         $(gcc --version | head -n1)"
@@ -66,6 +66,7 @@ pkgs.mkShell {
     echo "Run WebSocket demos:"
     echo "  ./binance_futures_demo   # Binance Futures BTCUSDT (5 levels)"
     echo "  ./gateio_futures_demo    # Gate.io Futures BTC_USDT (5 levels)"
+    echo "  ./dual_orderbook_demo    # Dual Exchange Order Book (side-by-side)"
     echo ""
     echo "Binance demo features:"
     echo "  - Connect to Binance Futures WebSocket"
@@ -78,6 +79,12 @@ pkgs.mkShell {
     echo "  - Subscribe to BTC_USDT order book (5 levels)"
     echo "  - Log every WebSocket message"
     echo "  - Display real-time order book snapshots"
+    echo ""
+    echo "Dual Order Book demo features:"
+    echo "  - Connect to both Binance and Gate.io simultaneously"
+    echo "  - Display order books side-by-side in real-time"
+    echo "  - Compare spreads and liquidity across exchanges"
+    echo "  - Multi-threaded WebSocket connections"
     echo ""
     
     # Setup GDB for debugging

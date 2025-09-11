@@ -35,6 +35,13 @@ add_executable(gateio_futures_demo
     demo/src/gateio_websocket_client.cpp
 )
 
+# Create the dual order book demo executable
+add_executable(dual_orderbook_demo
+    demo/src/dual_orderbook_demo.cpp
+    demo/src/binance_websocket_client.cpp
+    demo/src/gateio_websocket_client.cpp
+)
+
 # Set include directories for Binance demo
 target_include_directories(binance_futures_demo PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -43,6 +50,12 @@ target_include_directories(binance_futures_demo PRIVATE
 
 # Set include directories for Gate.io demo
 target_include_directories(gateio_futures_demo PRIVATE 
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/demo/include
+)
+
+# Set include directories for dual order book demo
+target_include_directories(dual_orderbook_demo PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/demo/include
 )
@@ -56,6 +69,13 @@ target_link_libraries(binance_futures_demo PRIVATE
 
 # Link libraries for Gate.io demo
 target_link_libraries(gateio_futures_demo PRIVATE 
+    ${CURL_LIBRARIES}
+    ${LIBWEBSOCKETS_LIBRARIES}
+    ${JSONCPP_LIBRARIES}
+)
+
+# Link libraries for dual order book demo
+target_link_libraries(dual_orderbook_demo PRIVATE 
     ${CURL_LIBRARIES}
     ${LIBWEBSOCKETS_LIBRARIES}
     ${JSONCPP_LIBRARIES}
@@ -75,6 +95,13 @@ target_include_directories(gateio_futures_demo PRIVATE
     ${JSONCPP_INCLUDE_DIRS}
 )
 
+# Set library include directories for dual order book demo
+target_include_directories(dual_orderbook_demo PRIVATE 
+    ${CURL_INCLUDE_DIRS}
+    ${LIBWEBSOCKETS_INCLUDE_DIRS}
+    ${JSONCPP_INCLUDE_DIRS}
+)
+
 # Set compile options for Binance demo
 target_compile_options(binance_futures_demo PRIVATE 
     ${CURL_CFLAGS_OTHER}
@@ -84,6 +111,13 @@ target_compile_options(binance_futures_demo PRIVATE
 
 # Set compile options for Gate.io demo
 target_compile_options(gateio_futures_demo PRIVATE 
+    ${CURL_CFLAGS_OTHER}
+    ${LIBWEBSOCKETS_CFLAGS_OTHER}
+    ${JSONCPP_CFLAGS_OTHER}
+)
+
+# Set compile options for dual order book demo
+target_compile_options(dual_orderbook_demo PRIVATE 
     ${CURL_CFLAGS_OTHER}
     ${LIBWEBSOCKETS_CFLAGS_OTHER}
     ${JSONCPP_CFLAGS_OTHER}

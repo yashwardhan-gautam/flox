@@ -58,16 +58,11 @@ void printOrderBook(long external_latency_ms, long internal_latency_us)
   std::cout << "Price\t\tQuantity" << std::endl;
   std::cout << "-----\t\t--------" << std::endl;
 
-  // Print top 5 asks (lowest price first)
+  // Print top 5 asks (highest price first - reverse order)
   int ask_count = 0;
-  for (const auto& ask : local_asks)
+  for (auto ask_it = local_asks.rbegin(); ask_it != local_asks.rend() && ask_count < 5; ++ask_it, ++ask_count)
   {
-    if (ask_count >= 5)
-    {
-      break;
-    }
-    std::cout << std::fixed << std::setprecision(1) << ask.first << "\t\t" << std::setprecision(4) << std::stod(ask.second) << std::endl;
-    ask_count++;
+    std::cout << std::fixed << std::setprecision(1) << ask_it->first << "\t\t" << std::setprecision(4) << std::stod(ask_it->second) << std::endl;
   }
 
   std::cout << "\n--- SPREAD ---" << std::endl;
@@ -176,13 +171,13 @@ void onDepthUpdate(const DepthUpdate& update)
 
 void onConnection()
 {
-  std::cout << "✅ Connected to Binance Futures WebSocket!" << std::endl;
+  std::cout << "Connected to Binance Futures WebSocket!" << std::endl;
   std::cout << "Subscribing to BTCUSDT depth stream..." << std::endl;
 }
 
 void onError(const std::string& error)
 {
-  std::cerr << "❌ WebSocket error: " << error << std::endl;
+  std::cerr << "WebSocket error: " << error << std::endl;
 }
 
 int main()
@@ -195,7 +190,7 @@ int main()
   bids_.clear();
   asks_.clear();
 
-  std::cout << "🚀 Binance Futures WebSocket Depth Stream Demo" << std::endl;
+  std::cout << "Binance Futures WebSocket Depth Stream Demo" << std::endl;
   std::cout << "Connecting to BTCUSDT depth stream..." << std::endl;
   std::cout << "Will log and display order book on every WebSocket update" << std::endl;
   std::cout << "Press Ctrl+C to exit" << std::endl;
